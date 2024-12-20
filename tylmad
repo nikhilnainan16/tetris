@@ -1,0 +1,272 @@
+import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:math';
+
+void main() {
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Tetris Game',
+      theme: ThemeData.dark(),
+      home: TetrisGame(),
+    );
+  }
+}
+
+class TetrisGame extends StatefulWidget {
+  @override
+  _TetrisGameState createState() => _TetrisGameState();
+}
+
+class _TetrisGameState extends State<TetrisGame> {
+  static const int gridWidth = 10;
+  static const int gridHeight = 20;
+  static const double blockSize = 30.0;
+
+  List<List<int>> grid = List.generate(gridHeight, (i) => List.filled(gridWidth, 0));
+  late Timer timer;
+  int score = 0;
+  bool gameOver = false;
+
+  // Define tetrominoes and their colors
+  List<List<List<int>>> tetrominoes = [
+    [
+      [1, 1, 1, 1], // I
+    ],
+    [
+      [1, 1],
+      [1, 1], // O
+    ],
+    [
+      [1, 1, 0],
+      [0, 1, 1], // S
+    ],
+    [
+      [0, 1, 1],
+      [1, 1, 0], // Z
+    ],
+    [
+      [1, 1, 1],
+      [0, 0, 1], // L
+    ],
+    [
+      [1, 1, 1],
+      [1, 0, 0], // J
+    ],
+    [
+      [0, 1, 0],
+      [1, 1, 1], // T
+    ]
+  ];
+
+  List<Color> tetrominoColors = [
+    Colors.cyan,    // I
+    Colors.yellow,  // O
+    Colors.green,   // S
+    Colors.red,     // Z
+    Colors.orange,  // L
+    Colors.blue,    // J
+    Colors.purple,  // T
+  ];
+
+  late List<List<int>> currentTetromino;
+  late Color currentTetrominoColor;
+  late int currentX;
+  late int currentY;
+
+  @override
+  void initState() {
+    super.initState();
+    spawnTetromino();
+    timer = Timer.periodic(Duration(milliseconds: 500), (timer) {
+      if (!gameOver) {
+        moveTetromino(0, 1); // Move down every 500 ms
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    timer.cancel();
+    super.dispose();
+  }
+
+  void spawnTetromino() {
+    Random rand = Random();
+    int tetrominoIndex = rand.nextInt(tetrominoes.length);
+    currentTetromino = tetrominoes[tetrominoIndex];
+    currentTetrominoColor = tetrominoColors[tetrominoIndex];
+    currentX = gridWidth ~/ 2 - currentTetromino[0].length ~/ 2;
+    currentY = 0;
+
+    if (checkCollision(currentX, currentY)) {
+      setState(() {
+        gameOver = true;
+      });
+    }
+  }
+
+  bool checkCollision(int x, int y) {
+    for (int row = 0; row < currentTetromino.length; row++) {
+      for (int col = 0; col < currentTetromino[row].length; col++) {
+        if (currentTetromino[row][col] != 0) {
+          int newX = x + col;
+          int newY = y + row;
+
+          if (newX < 0 || newX >= gridWidth || newY >= gridHeight || (newY >= 0 && grid[newY][newX] != 0)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  void moveTetromino(int dx, int dy) {
+    setState(() {
+      if (!checkCollision(currentX + dx, currentY + dy)) {
+        currentX += dx;
+        currentY += dy;
+      } else if (dy == 1) {
+        lockTetromino();
+        spawnTetromino();
+        clearFullRows();
+      }
+    });
+  }
+
+  void lockTetromino() {
+    for (int row = 0; row < currentTetromino.length; row++) {
+      for (int col = 0; col < currentTetromino[row].length; col++) {
+        if (currentTetromino[row][col] != 0) {
+          int gridX = currentX + col;
+          int gridY = currentY + row;
+          if (gridY >= 0) {
+            grid[gridY][gridX] = 1;
+          }
+        }
+      }
+    }
+  }
+
+  void clearFullRows() {
+    for (int row = gridHeight - 1; row >= 0; row--) {
+      if (grid[row].every((cell) => cell != 0)) {
+        setState(() {
+          grid.removeAt(row);
+          grid.insert(0, List.filled(gridWidth, 0));
+        });
+        score += 100;
+      }
+    }
+  }
+
+  void rotateTetromino() {
+    setState(() {
+      List<List<int>> rotated = List.generate(currentTetromino[0].length, (i) =>
+          List.generate(currentTetromino.length, (j) => currentTetromino[currentTetromino.length - j - 1][i]));
+
+      if (!checkCollision(currentX, currentY)) {
+        currentTetromino = rotated;
+      }
+    });
+  }
+
+  void restartGame() {
+    setState(() {
+      grid = List.generate(gridHeight, (i) => List.filled(gridWidth, 0));
+      score = 0;
+      gameOver = false;
+    });
+
+    spawnTetromino();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Tetris - Score: $score')),
+      body: Column(
+        children: [
+          GestureDetector(
+            onPanUpdate: (details) {
+              if (gameOver) return;
+
+              if (details.delta.dx < -10) {
+                moveTetromino(-1, 0); // Move left
+              } else if (details.delta.dx > 10) {
+                moveTetromino(1, 0); // Move right
+              } else if (details.delta.dy > 10) {
+                moveTetromino(0, 1); // Move down
+              } else if (details.delta.dy < -10) {
+                rotateTetromino(); // Rotate
+              }
+            },
+            child: Container(
+              width: gridWidth * blockSize,
+              height: gridHeight * blockSize,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white),
+                color: Colors.black,
+              ),
+              child: Stack(
+                children: [
+                  ...List.generate(gridHeight, (row) {
+                    return List.generate(gridWidth, (col) {
+                      if (grid[row][col] != 0) {
+                        return Positioned(
+                          left: col * blockSize,
+                          top: row * blockSize,
+                          child: Container(
+                            width: blockSize,
+                            height: blockSize,
+                            color: Colors.blueGrey,
+                          ),
+                        );
+                      }
+                      return Container();
+                    });
+                  }).expand((i) => i),
+                  ...List.generate(currentTetromino.length, (row) {
+                    return List.generate(currentTetromino[row].length, (col) {
+                      if (currentTetromino[row][col] != 0) {
+                        return Positioned(
+                          left: (currentX + col) * blockSize,
+                          top: (currentY + row) * blockSize,
+                          child: Container(
+                            width: blockSize,
+                            height: blockSize,
+                            color: currentTetrominoColor,
+                          ),
+                        );
+                      }
+                      return Container();
+                    });
+                  }).expand((i) => i),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(height: 20),
+          if (gameOver)
+            Column(
+              children: [
+                Text(
+                  'Game Over',
+                  style: TextStyle(fontSize: 40, color: Colors.red),
+                ),
+                ElevatedButton(
+                  onPressed: restartGame,
+                  child: Text('Restart'),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
